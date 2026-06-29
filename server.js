@@ -616,6 +616,20 @@ app.post('/api/companies/:id/sync-vapi', requireCompanyAccess, async (req, res) 
     model: {
       provider: 'openai', model: 'gpt-4o-mini', temperature: 0.7, maxTokens: 250,
       messages: [{ role: 'system', content: c.systemPrompt }],
+      // The master prompt promises an `endCall` tool and tells the model to
+      // call it to hang up. Without this tool the model can only *speak* a
+      // goodbye and the call stays open — the customer's polite "مع السلامة"
+      // then triggers another spoken goodbye, looping forever. Registering the
+      // tool gives the model an actual way to terminate the call.
+      tools: [
+        {
+          type: 'endCall',
+          // System speaks this line right before hanging up, guarantees a goodbye.
+          messages: [
+            { type: 'request-start', content: 'في أمان الله، إلى اللقاء.' },
+          ],
+        },
+      ],
     },
     voice: {
       provider: '11labs', voiceId: c.voiceId || process.env.ELEVENLABS_VOICE_ID,
@@ -628,7 +642,10 @@ app.post('/api/companies/:id/sync-vapi', requireCompanyAccess, async (req, res) 
     backgroundDenoisingEnabled: true,
     silenceTimeoutSeconds: 30,
     maxDurationSeconds: 600,
-    endCallPhrases: ['شكراً مع السلامة', 'باي باي', 'goodbye'],
+    // Fallback hangup if the model misses the tool call. These must match what
+    // customers actually say, not exact greetings — bare "مع السلامة" / "خلاص"
+    // are the common sign-offs, so include them (and an English "bye").
+    endCallPhrases: ['مع السلامة', 'في أمان الله', 'خلاص', 'باي باي', 'goodbye', 'bye'],
     startSpeakingPlan: { waitSeconds: 0.4, smartEndpointingEnabled: 'livekit' },
     stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.2, backoffSeconds: 1.0 },
   };
